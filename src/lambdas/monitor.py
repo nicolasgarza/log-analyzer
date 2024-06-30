@@ -7,7 +7,7 @@ sns = boto3.client("sns")
 
 
 def lambda_handler(event, context):
-    # assume teh event contains teh s3 bucket and key of the processed data
+    # assume the event contains teh s3 bucket and key of the processed data
     bucket = event["bucket"]
     key = event["key"]
 
