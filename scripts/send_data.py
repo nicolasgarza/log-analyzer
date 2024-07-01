@@ -3,7 +3,7 @@ import os
 
 BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 
-LOCAL_FILE_PATH = "data/init_logs.log"
+LOCAL_FILE_PATH = "data/modified_logs.log"
 
 S3_KEY = "logs/logfile.log"
 

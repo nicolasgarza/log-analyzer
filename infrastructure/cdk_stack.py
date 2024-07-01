@@ -72,12 +72,20 @@ class LogProcessingStack(Stack):
             environment={"SNS_TOPIC_ARN": alert_topic.topic_arn},
         )
 
-        # set up s3 event trigger
         s3_trigger_lambda.add_event_source(
             lambda_events.S3EventSource(
                 raw_logs_bucket,
                 events=[s3.EventType.OBJECT_CREATED],
                 filters=[s3.NotificationKeyFilter(prefix="logs/", suffix=".log")],
+            )
+        )
+
+        # Set up S3 event trigger for MonitorLambda
+        monitor_lambda.add_event_source(
+            lambda_events.S3EventSource(
+                processed_logs_bucket,
+                events=[s3.EventType.OBJECT_CREATED],
+                filters=[s3.NotificationKeyFilter(prefix="processed/", suffix=".json")],
             )
         )
 

@@ -5,35 +5,33 @@ import os
 
 cloudwatch = boto3.client("cloudwatch")
 sns = boto3.client("sns")
+s3 = boto3.client("s3")
 
 sns_topic_arn_link = os.environ["SNS_TOPIC_ARN"]
 
 
 def lambda_handler(event, context):
-    # assume the event contains the s3 bucket and key of the processed data
-    bucket = event["bucket"]
-    key = event["key"]
+    for record in event["Records"]:
+        bucket = record["s3"]["bucket"]["name"]
+        key = record["s3"]["object"]["key"]
 
-    try:
-        # retrieve processed data
-        processed_data = get_processed_data(bucket, key)
+        try:
+            # Retrieve processed data
+            processed_data = get_processed_data(bucket, key)
 
-        # analyze data
-        alerts = analyze_data(processed_data)
-        if alerts:
-            send_alerts(alerts)
+            # Analyze data
+            alerts = analyze_data(processed_data)
+            if alerts:
+                send_alerts(alerts)
 
-        return {
-            "statusCode": 200,
-            "body": json.dumps("Monitoring completed successfully"),
-        }
-    except Exception as e:
-        print(f"Error in monitoring: {str(e)}")
-        return {"statusCode": 500, "body": json.dumps("Error in monitoring function")}
+            print(f"Successfully processed file: {bucket}/{key}")
+        except Exception as e:
+            print(f"Error processing file {bucket}/{key}: {str(e)}")
+
+    return {"statusCode": 200, "body": json.dumps("Monitoring completed successfully")}
 
 
 def get_processed_data(bucket, key):
-    s3 = boto3.client("s3")
     response = s3.get_object(Bucket=bucket, Key=key)
     return json.loads(response["Body"].read().decode("utf-8"))
 
@@ -41,7 +39,7 @@ def get_processed_data(bucket, key):
 def analyze_data(data):
     alerts = []
 
-    # check for high error rate
+    # Check for high error rate
     error_rate = (
         data["errors"] / data["total_requests"] if data["total_requests"] > 0 else 0
     )
@@ -49,8 +47,7 @@ def analyze_data(data):
         alerts.append(f"High error rate detected: {error_rate:.2%}")
 
     # Check for traffic spike
-    # should probably check with historical data
-    if data["total_requests"] > 10000:
+    if data["total_requests"] > 10000:  # Adjust this threshold as needed
         alerts.append(
             f"Unusual traffic spike detected: {data['total_requests']} requests"
         )
@@ -59,6 +56,7 @@ def analyze_data(data):
 
 
 def send_alerts(alerts):
-    sns_topic_arn = sns_topic_arn_link
     message = "\n".join(alerts)
-    sns.publish(TopicArn=sns_topic_arn, Message=message, Subject="Web Server Log Alert")
+    sns.publish(
+        TopicArn=sns_topic_arn_link, Message=message, Subject="Web Server Log Alert"
+    )
