@@ -1,13 +1,16 @@
 import json
 import boto3
 from datetime import datetime, timedelta
+import os
 
 cloudwatch = boto3.client("cloudwatch")
 sns = boto3.client("sns")
 
+sns_topic_arn_link = os.environ["SNS_TOPIC_ARN"]
+
 
 def lambda_handler(event, context):
-    # assume the event contains teh s3 bucket and key of the processed data
+    # assume the event contains the s3 bucket and key of the processed data
     bucket = event["bucket"]
     key = event["key"]
 
@@ -56,6 +59,6 @@ def analyze_data(data):
 
 
 def send_alerts(alerts):
-    sns_topic_arn = "SNS_TOPIC_ARN"  # replace
+    sns_topic_arn = sns_topic_arn_link
     message = "\n".join(alerts)
     sns.publish(TopicArn=sns_topic_arn, Message=message, Subject="Web Server Log Alert")

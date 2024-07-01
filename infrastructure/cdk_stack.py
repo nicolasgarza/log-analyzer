@@ -7,6 +7,7 @@ from aws_cdk import (
     aws_lambda_event_sources as lambda_events,
     aws_iam as iam,
     Duration,
+    RemovalPolicy,
 )
 from constructs import Construct
 
@@ -17,13 +18,27 @@ class LogProcessingStack(Stack):
 
         # create s3 buckets
         raw_logs_bucket = s3.Bucket(self, "RawLogsBucket")
-        processed_logs_bucket = s3.Bucket(self, "ProcessedLogsBucket")
-
-        # Create SQS queue
-        processing_queue = sqs.Queue(self, "ProcessingQueue")
+        processed_logs_bucket = s3.Bucket(
+            self,
+            "ProcessedLogsBucket",
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
 
         # Create SNS topic for alerts
         alert_topic = sns.Topic(self, "AlertTopic")
+
+        dead_letter_queue = sqs.Queue(
+            self, "DeadLetterQueue", queue_name="MyDeadLetterQueue"
+        )
+        processing_queue = sqs.Queue(
+            self,
+            "ProcessingQueue",
+            queue_name="MyProcessingQueue",
+            dead_letter_queue=sqs.DeadLetterQueue(
+                max_receive_count=2, queue=dead_letter_queue
+            ),
+        )
 
         # Create Lambda Functions
         s3_trigger_lambda = lambda_.Function(
@@ -41,7 +56,11 @@ class LogProcessingStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_9,
             handler="data_processor.lambda_handler",
             code=lambda_.Code.from_asset("src/lambdas"),
-            environment={"PROCESSED_BUCKET": processed_logs_bucket.bucket_name},
+            environment={
+                "PROCESSED_BUCKET": processed_logs_bucket.bucket_name,
+                "SQS_QUEUE_URL": processing_queue.queue_url,
+                "DLQ_URL": dead_letter_queue.queue_url,
+            },
         )
 
         monitor_lambda = lambda_.Function(
@@ -62,7 +81,6 @@ class LogProcessingStack(Stack):
             )
         )
 
-        # set up sqs trigger for data proecssor
         data_processor_lambda.add_event_source(
             lambda_events.SqsEventSource(processing_queue)
         )
@@ -70,12 +88,11 @@ class LogProcessingStack(Stack):
         # grant permissions
         raw_logs_bucket.grant_read(s3_trigger_lambda)
         processing_queue.grant_send_messages(s3_trigger_lambda)
-
         raw_logs_bucket.grant_read(data_processor_lambda)
-        processed_logs_bucket.grant_write(data_processor_lambda)
-
+        processed_logs_bucket.grant_read_write(data_processor_lambda)
         processed_logs_bucket.grant_read(monitor_lambda)
         alert_topic.grant_publish(monitor_lambda)
+        dead_letter_queue.grant_send_messages(data_processor_lambda)
 
         # add cloudwatch permissions to all lambdas
         for func in [s3_trigger_lambda, data_processor_lambda, monitor_lambda]:
